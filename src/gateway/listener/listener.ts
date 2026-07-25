@@ -23,6 +23,7 @@ import { EVENTEnum, EventOpts, getPermission, listenEvent, ListenEventOpts, NewU
 import { WebSocket } from "@spacebar/gateway";
 import { PublicMember, RelationshipType } from "@spacebar/schemas";
 import { CLOSECODES, OPCODES, Send } from "../util";
+import { markDisconnected, recordDispatch } from "../util/ResumeBuffer";
 
 // TODO: close connection on Invalidated Token
 // TODO: check intent
@@ -34,12 +35,14 @@ import { CLOSECODES, OPCODES, Send } from "../util";
 export function handlePresenceUpdate(this: WebSocket, { event, acknowledge, data }: EventOpts) {
     acknowledge?.();
     if (event === EVENTEnum.PresenceUpdate) {
-        return Send(this, {
+        const payload = {
             op: OPCODES.Dispatch,
             t: event,
             d: data,
             s: this.sequence++,
-        });
+        };
+        recordDispatch(this, payload);
+        return Send(this, payload);
     }
 }
 
@@ -160,6 +163,8 @@ export async function setupListener(this: WebSocket) {
         // Unsubscribe from RabbitMQ events
         RabbitMQ.off("reconnected", handleReconnect);
         RabbitMQ.off("disconnected", handleDisconnect);
+
+        markDisconnected(this.session_id);
 
         // wait for event consumer cancellation
         await Promise.all(
@@ -378,10 +383,12 @@ async function consume(this: WebSocket, opts: EventOpts) {
         }
     }
 
-    await Send(this, {
+    const dispatchPayload = {
         op: OPCODES.Dispatch,
         t: event,
         d: data,
         s: this.sequence++,
-    });
+    };
+    recordDispatch(this, dispatchPayload);
+    await Send(this, dispatchPayload);
 }
