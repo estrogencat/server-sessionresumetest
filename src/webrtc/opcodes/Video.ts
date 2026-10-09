@@ -80,6 +80,11 @@ export async function onVideo(this: WebRtcWebSocket, payload: VoicePayload) {
 
     if (!wantsToProduceVideo && this.webRtcClient.isProducingVideo()) {
         this.webRtcClient.stopPublishingTrack("video");
+
+        for (const client of mediaServer.getClientsForRtcServer<WebRtcWebSocket>(voiceRoomId)) {
+            if (client.user_id === this.user_id) continue;
+            if (client.isSubscribedToTrack(this.user_id, "video")) client.unSubscribeFromTrack(this.user_id, "video");
+        }
     }
 
     // check if client has signaled that it will send audio
